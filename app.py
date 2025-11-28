@@ -10,10 +10,13 @@ import re
 from urllib.parse import urljoin, urlparse
 from threading import Lock
 import signal
-from dotenv import load_dotenv
-
 # Load environment variables from .env file (for local development)
-load_dotenv()
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    # dotenv not installed, that's OK - use environment variables or config.py
+    pass
 
 # Global progress tracking
 progress_lock = Lock()
@@ -952,8 +955,16 @@ def search_companies():
         })
         
     except Exception as e:
+        import traceback
+        error_trace = traceback.format_exc()
+        print(f"Error in search_companies: {str(e)}")
+        print(f"Traceback: {error_trace}")
         update_progress('error', 'exception', 0, f'Error: {str(e)}')
-        return jsonify({'error': str(e)}), 500
+        return jsonify({
+            'error': str(e),
+            'companies': [],
+            'count': 0
+        }), 500
 
 @app.route('/api/history', methods=['GET'])
 def get_history():

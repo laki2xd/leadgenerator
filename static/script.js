@@ -363,7 +363,19 @@ async function searchCompanies() {
             body: JSON.stringify(requestBody)
         });
         
-        const data = await response.json();
+        // Check if response has content before parsing JSON
+        const responseText = await response.text();
+        if (!responseText || responseText.trim() === '') {
+            throw new Error('Empty response from server. Please check Render logs for errors.');
+        }
+        
+        let data;
+        try {
+            data = JSON.parse(responseText);
+        } catch (parseError) {
+            console.error('Failed to parse JSON response:', responseText);
+            throw new Error('Invalid response from server. Please check Render logs. Response: ' + responseText.substring(0, 200));
+        }
         
         // Stop progress polling
         if (progressInterval) {
