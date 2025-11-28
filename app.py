@@ -10,6 +10,10 @@ import re
 from urllib.parse import urljoin, urlparse
 from threading import Lock
 import signal
+from dotenv import load_dotenv
+
+# Load environment variables from .env file (for local development)
+load_dotenv()
 
 # Global progress tracking
 progress_lock = Lock()
