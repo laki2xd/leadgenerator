@@ -829,18 +829,6 @@ def get_companies_from_directories(industry, search_type='industry', product='',
             return companies[:20]
     
     # Skip Nearby Search and Yelp - they're too slow and cause timeout
-    # If we don't have enough, try Apollo (faster than Nearby Search)
-    if len(companies) < 20 and APOLLO_API_KEY:
-        search_term = product if (search_type == 'product' and product) else industry
-        if search_type == 'product' and product:
-            print(f"Searching Google Places Nearby for {product} manufacturers...")
-            nearby_companies = search_google_places_nearby(f"{product} manufacturer", 'North America', 60)
-        else:
-            print(f"Searching Google Places Nearby for {industry}...")
-            nearby_companies = search_google_places_nearby(industry, 'North America', 60)
-        companies.extend(nearby_companies)
-        print(f"Found {len(nearby_companies)} additional companies from Nearby Search")
-    
     # Try Apollo.io API (faster than multiple Google searches)
     if len(companies) < 20 and APOLLO_API_KEY:
         if search_type == 'product' and product:
