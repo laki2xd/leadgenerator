@@ -844,17 +844,52 @@ def get_companies_from_directories(industry, search_type='industry', product='',
     # Return what we have to avoid timeout
     
     # Remove duplicates based on name and address
+    # This keeps all offices/locations for the same company (different addresses = different entries)
+    # Only removes true duplicates (same name AND same address)
+    def normalize_address(address):
+        """Normalize address for better duplicate detection"""
+        if not address:
+            return ''
+        # Convert to lowercase and remove extra spaces
+        normalized = address.lower().strip()
+        # Normalize common address abbreviations
+        normalized = re.sub(r'\b(street|st\.?)\b', 'st', normalized)
+        normalized = re.sub(r'\b(avenue|ave\.?)\b', 'ave', normalized)
+        normalized = re.sub(r'\b(road|rd\.?)\b', 'rd', normalized)
+        normalized = re.sub(r'\b(boulevard|blvd\.?)\b', 'blvd', normalized)
+        normalized = re.sub(r'\b(drive|dr\.?)\b', 'dr', normalized)
+        normalized = re.sub(r'\b(lane|ln\.?)\b', 'ln', normalized)
+        # Remove extra spaces and commas
+        normalized = re.sub(r'\s+', ' ', normalized)
+        normalized = re.sub(r',\s*,', ',', normalized)
+        return normalized.strip()
+    
     seen = set()
     unique_companies = []
+    duplicate_count = 0
+    
     for company in companies:
         name_lower = company['name'].lower().strip()
-        address_lower = company['address'].lower().strip() if company['address'] else ''
+        address_normalized = normalize_address(company.get('address', ''))
         
-        # Create a key for deduplication
-        key = (name_lower, address_lower)
+        # Create a key for deduplication: (company_name, normalized_address)
+        # Same company with different addresses = different entries (keeps all offices)
+        # Same company with same address = duplicate (removed)
+        key = (name_lower, address_normalized)
+        
         if key not in seen and name_lower:  # Only add if name exists
             seen.add(key)
             unique_companies.append(company)
+        else:
+            duplicate_count += 1
+            if address_normalized:
+                print(f"Skipped duplicate: {name_lower} at {address_normalized[:50]}")
+            else:
+                print(f"Skipped duplicate: {name_lower} (no address)")
+    
+    if duplicate_count > 0:
+        print(f"Removed {duplicate_count} duplicate entries (same company + same address)")
+        print(f"Kept {len(unique_companies)} unique companies (including multiple offices)")
     
     print(f"Total unique companies found: {len(unique_companies)}")
     # Return max 20 companies to avoid timeout (reduced from 100)
