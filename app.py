@@ -179,14 +179,18 @@ def is_transportation_relevant_company(place_data, company_name='', address=''):
     # Default: include if it's a business establishment
     return 'establishment' in types or 'point_of_interest' in types
 
-def search_google_places(industry, location, max_results=50, search_context=''):
+def search_google_places(industry, location, max_results=50, search_context='', timeout_seconds=25):
     """Search for companies using Google Places API with progress tracking"""
     companies = []
+    start_time = time.time()
     
     if not GOOGLE_PLACES_API_KEY:
         return companies
     
     try:
+        # Reduce max_results to avoid timeout (Render free tier has 30s limit)
+        max_results = min(max_results, 30)  # Limit to 30 to stay under timeout
+        
         # Search in multiple locations
         locations = ['Canada', 'United States']
         results_per_location = max_results // 2
@@ -216,33 +220,45 @@ def search_google_places(industry, location, max_results=50, search_context=''):
                 places = data.get('results', [])[:results_per_location]
                 update_progress('processing', f'Processing {len(places)} results from {loc}...', len(companies))
                 
-                for place_idx, place in enumerate(places):
+                # Check timeout before processing places
+                elapsed_total = time.time() - start_time
+                if elapsed_total > timeout_seconds:
+                    print(f"Timeout warning: {elapsed_total:.1f}s elapsed, stopping search")
+                    update_progress('warning', 'timeout', len(companies), f'Stopping search to avoid timeout ({elapsed_total:.1f}s)')
+                    break
+                
+                # Limit places to process to avoid timeout
+                places_to_process = min(len(places), 15)  # Process max 15 per location
+                
+                for place_idx, place in enumerate(places[:places_to_process]):
+                    # Check timeout during processing
+                    if time.time() - start_time > timeout_seconds:
+                        print(f"Timeout during processing, stopping at {place_idx}/{places_to_process}")
+                        break
+                    
                     # Filter out retail stores and small shops
                     if not is_transportation_relevant_company(
                         place, 
                         place.get('name', ''), 
                         place.get('formatted_address', '')
                     ):
-                        update_progress('filtering', f'Filtered out: {place.get("name", "")[:30]}...', len(companies))
                         continue
                     
                     place_id = place.get('place_id', '')
                     company_name = place.get('name', '')
                     
-                    update_progress('fetching', f'Fetching details: {company_name[:40]}...', len(companies), f'Company {place_idx+1}/{len(places)}')
+                    # Skip detail fetching to save time - use data from search results
+                    # This is the main bottleneck causing timeout
+                    update_progress('processing', f'Processing: {company_name[:40]}...', len(companies))
                     
-                    # Get detailed information with timeout - skip if stuck
-                    start_time = time.time()
-                    company_details = get_place_details(place_id, timeout=5)
-                    elapsed = time.time() - start_time
-                    
-                    # Skip if it took more than 5 seconds (stuck)
-                    if elapsed > 5:
-                        update_progress('warning', 'skipped', len(companies), f'Skipped {company_name[:30]}... (took {elapsed:.1f}s, timeout)')
-                        continue
-                    
-                    if elapsed > 4.5:
-                        update_progress('warning', 'slow', len(companies), f'Slow response ({elapsed:.1f}s) for {company_name[:30]}...')
+                    # Use data from search results directly (faster)
+                    # Only fetch details if we have time
+                    company_details = {}
+                    if time.time() - start_time < timeout_seconds - 3:  # Leave 3s buffer
+                        try:
+                            company_details = get_place_details(place_id, timeout=2)  # Reduced timeout
+                        except:
+                            pass  # Use basic data if details fail
                     
                     # Determine industry field based on search context
                     industry_field = search_context if search_context else industry
@@ -261,6 +277,11 @@ def search_google_places(industry, location, max_results=50, search_context=''):
                     }
                     companies.append(company)
                     update_progress('found', f'Found: {company_name[:40]}...', len(companies))
+                    
+                    # Early return if we have enough companies
+                    if len(companies) >= 20:  # Return early with 20 companies
+                        print(f"Found enough companies ({len(companies)}), returning early")
+                        break
             
             elif data.get('status') == 'OVER_QUERY_LIMIT':
                 update_progress('error', 'quota', len(companies), f'API quota exceeded for {loc}')
@@ -796,13 +817,20 @@ def get_companies_from_directories(industry, search_type='industry', product='',
             ])
         
         # Try Google Places Text Search first (faster)
+        # Reduced max_results to avoid timeout
         print(f"Searching Google Places for {industry} (filtering for transportation-relevant companies)...")
-        google_companies = search_google_places(industry, 'North America', 80)
+        google_companies = search_google_places(industry, 'North America', 30, timeout_seconds=20)  # Reduced to 30, 20s timeout
         companies.extend(google_companies)
         print(f"Found {len(google_companies)} transportation-relevant companies from Google Places")
+        
+        # Early return if we have enough
+        if len(companies) >= 20:
+            print(f"Found {len(companies)} companies, returning early to avoid timeout")
+            return companies[:20]
     
-    # If we don't have enough, try Google Places Nearby Search
-    if len(companies) < 100:
+    # Skip Nearby Search and Yelp - they're too slow and cause timeout
+    # If we don't have enough, try Apollo (faster than Nearby Search)
+    if len(companies) < 20 and APOLLO_API_KEY:
         search_term = product if (search_type == 'product' and product) else industry
         if search_type == 'product' and product:
             print(f"Searching Google Places Nearby for {product} manufacturers...")
@@ -813,28 +841,19 @@ def get_companies_from_directories(industry, search_type='industry', product='',
         companies.extend(nearby_companies)
         print(f"Found {len(nearby_companies)} additional companies from Nearby Search")
     
-    # If we don't have enough, try Apollo.io API (B2B database)
-    if len(companies) < 100 and APOLLO_API_KEY:
+    # Try Apollo.io API (faster than multiple Google searches)
+    if len(companies) < 20 and APOLLO_API_KEY:
         if search_type == 'product' and product:
             print(f"Searching Apollo.io for manufacturers of {product}...")
-            apollo_companies = search_apollo_api(product, 'North America', 50, 'product', product)
+            apollo_companies = search_apollo_api(product, 'North America', 20, 'product', product)  # Reduced to 20
         else:
             print(f"Searching Apollo.io for {industry}...")
-            apollo_companies = search_apollo_api(industry, 'North America', 50)
+            apollo_companies = search_apollo_api(industry, 'North America', 20)  # Reduced to 20
         companies.extend(apollo_companies)
         print(f"Found {len(apollo_companies)} companies from Apollo.io")
     
-    # If we still don't have enough, try Yelp
-    if len(companies) < 100:
-        search_term = product if (search_type == 'product' and product) else industry
-        if search_type == 'product' and product:
-            print(f"Searching Yelp for {product} manufacturers...")
-            yelp_companies = search_yelp(f"{product} manufacturer", 'North America', 60)
-        else:
-            print(f"Searching Yelp for {industry}...")
-            yelp_companies = search_yelp(industry, 'North America', 60)
-        companies.extend(yelp_companies)
-        print(f"Found {len(yelp_companies)} companies from Yelp")
+    # Skip Yelp and Nearby Search - they're too slow and cause timeout
+    # Return what we have to avoid timeout
     
     # Remove duplicates based on name and address
     seen = set()
@@ -850,7 +869,8 @@ def get_companies_from_directories(industry, search_type='industry', product='',
             unique_companies.append(company)
     
     print(f"Total unique companies found: {len(unique_companies)}")
-    return unique_companies[:100]
+    # Return max 20 companies to avoid timeout (reduced from 100)
+    return unique_companies[:20]
 
 @app.route('/')
 def index():
@@ -948,19 +968,28 @@ def search_companies():
         
         # Get companies based on search type
         print(f"Starting search: type={search_type}, industry={industry}, product={product}")
+        search_start_time = time.time()
         try:
             if search_type == 'product':
                 companies = get_companies_from_directories('', search_type, product, industry_filter)
             else:
                 companies = get_companies_from_directories(industry, search_type, '', '')
-            print(f"Search completed: Found {len(companies)} companies")
+            search_elapsed = time.time() - search_start_time
+            print(f"Search completed: Found {len(companies)} companies in {search_elapsed:.1f}s")
+            
+            # If search took too long, return what we have
+            if search_elapsed > 25:
+                print(f"WARNING: Search took {search_elapsed:.1f}s, close to timeout limit")
         except Exception as search_error:
-            print(f"ERROR in get_companies_from_directories: {str(search_error)}")
+            search_elapsed = time.time() - search_start_time
+            print(f"ERROR in get_companies_from_directories after {search_elapsed:.1f}s: {str(search_error)}")
             import traceback
             print(traceback.format_exc())
-            raise
+            # Return empty list instead of raising to avoid timeout
+            companies = []
         
-        if len(companies) < 10:
+        # Accept fewer companies to avoid timeout (reduced from 10 to 5)
+        if len(companies) < 5:
             update_progress('warning', 'low_results', len(companies), f'Only found {len(companies)} companies')
             return jsonify({
                 'error': f'Only found {len(companies)} companies. Please try a different industry or check your API keys.',
