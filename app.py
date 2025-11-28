@@ -843,25 +843,18 @@ def get_companies_from_directories(industry, search_type='industry', product='',
     # Skip Yelp and Nearby Search - they're too slow and cause timeout
     # Return what we have to avoid timeout
     
-    # Remove duplicates based on name and address
-    # This keeps all offices/locations for the same company (different addresses = different entries)
-    # Only removes true duplicates (same name AND same address)
-    def normalize_address(address):
-        """Normalize address for better duplicate detection"""
-        if not address:
+    # Remove duplicates based on company name only
+    # If same company appears at multiple offices/locations, keep only the first one
+    def normalize_company_name(name):
+        """Normalize company name for better duplicate detection"""
+        if not name:
             return ''
         # Convert to lowercase and remove extra spaces
-        normalized = address.lower().strip()
-        # Normalize common address abbreviations
-        normalized = re.sub(r'\b(street|st\.?)\b', 'st', normalized)
-        normalized = re.sub(r'\b(avenue|ave\.?)\b', 'ave', normalized)
-        normalized = re.sub(r'\b(road|rd\.?)\b', 'rd', normalized)
-        normalized = re.sub(r'\b(boulevard|blvd\.?)\b', 'blvd', normalized)
-        normalized = re.sub(r'\b(drive|dr\.?)\b', 'dr', normalized)
-        normalized = re.sub(r'\b(lane|ln\.?)\b', 'ln', normalized)
-        # Remove extra spaces and commas
+        normalized = name.lower().strip()
+        # Remove common suffixes/legal entities (they don't make companies different)
+        normalized = re.sub(r'\b(inc\.?|incorporated|llc|llc\.?|ltd\.?|limited|corp\.?|corporation|co\.?|company)\b', '', normalized)
+        # Remove extra spaces
         normalized = re.sub(r'\s+', ' ', normalized)
-        normalized = re.sub(r',\s*,', ',', normalized)
         return normalized.strip()
     
     seen = set()
@@ -869,27 +862,23 @@ def get_companies_from_directories(industry, search_type='industry', product='',
     duplicate_count = 0
     
     for company in companies:
-        name_lower = company['name'].lower().strip()
-        address_normalized = normalize_address(company.get('address', ''))
+        name_normalized = normalize_company_name(company.get('name', ''))
         
-        # Create a key for deduplication: (company_name, normalized_address)
-        # Same company with different addresses = different entries (keeps all offices)
-        # Same company with same address = duplicate (removed)
-        key = (name_lower, address_normalized)
-        
-        if key not in seen and name_lower:  # Only add if name exists
-            seen.add(key)
+        # Create a key for deduplication: company_name only
+        # Same company at multiple offices = duplicate (removed, keep only first)
+        # Different companies = kept
+        if name_normalized and name_normalized not in seen:
+            seen.add(name_normalized)
             unique_companies.append(company)
         else:
             duplicate_count += 1
-            if address_normalized:
-                print(f"Skipped duplicate: {name_lower} at {address_normalized[:50]}")
-            else:
-                print(f"Skipped duplicate: {name_lower} (no address)")
+            original_name = company.get('name', 'Unknown')
+            address = company.get('address', 'No address')
+            print(f"Skipped duplicate company: {original_name} at {address[:50]}")
     
     if duplicate_count > 0:
-        print(f"Removed {duplicate_count} duplicate entries (same company + same address)")
-        print(f"Kept {len(unique_companies)} unique companies (including multiple offices)")
+        print(f"Removed {duplicate_count} duplicate entries (same company at multiple offices)")
+        print(f"Kept {len(unique_companies)} unique companies (one entry per company)")
     
     print(f"Total unique companies found: {len(unique_companies)}")
     # Return max 20 companies to avoid timeout (reduced from 100)
