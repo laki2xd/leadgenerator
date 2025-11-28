@@ -884,6 +884,11 @@ def get_progress():
 def search_companies():
     global current_progress
     try:
+        # Log that request was received
+        print("=== SEARCH REQUEST RECEIVED ===")
+        print(f"Request method: {request.method}")
+        print(f"Content-Type: {request.content_type}")
+        
         # Reset progress
         with progress_lock:
             current_progress = {
@@ -895,7 +900,17 @@ def search_companies():
                 'details': []
             }
         
+        # Check if request has JSON data
+        if not request.is_json:
+            print("ERROR: Request is not JSON")
+            return jsonify({
+                'error': 'Request must be JSON',
+                'companies': [],
+                'count': 0
+            }), 400
+        
         data = request.json
+        print(f"Received data: {data}")
         search_type = data.get('search_type', 'industry')
         industry = data.get('industry', '').strip()
         product = data.get('product', '').strip()
@@ -914,7 +929,12 @@ def search_companies():
             search_query = industry
         
         # Check if API keys are configured
+        print(f"GOOGLE_PLACES_API_KEY exists: {bool(GOOGLE_PLACES_API_KEY)}")
+        print(f"YELP_API_KEY exists: {bool(YELP_API_KEY)}")
+        print(f"APOLLO_API_KEY exists: {bool(APOLLO_API_KEY)}")
+        
         if not GOOGLE_PLACES_API_KEY and not YELP_API_KEY:
+            print("ERROR: No API keys configured")
             update_progress('error', 'config', 0, 'No API keys configured')
             return jsonify({
                 'error': 'No API keys configured. Please set GOOGLE_PLACES_API_KEY or YELP_API_KEY environment variables. See README.md for instructions.',
@@ -927,10 +947,18 @@ def search_companies():
             update_progress('searching', f'Searching for: {industry}', 0, 'Starting company search...')
         
         # Get companies based on search type
-        if search_type == 'product':
-            companies = get_companies_from_directories('', search_type, product, industry_filter)
-        else:
-            companies = get_companies_from_directories(industry, search_type, '', '')
+        print(f"Starting search: type={search_type}, industry={industry}, product={product}")
+        try:
+            if search_type == 'product':
+                companies = get_companies_from_directories('', search_type, product, industry_filter)
+            else:
+                companies = get_companies_from_directories(industry, search_type, '', '')
+            print(f"Search completed: Found {len(companies)} companies")
+        except Exception as search_error:
+            print(f"ERROR in get_companies_from_directories: {str(search_error)}")
+            import traceback
+            print(traceback.format_exc())
+            raise
         
         if len(companies) < 10:
             update_progress('warning', 'low_results', len(companies), f'Only found {len(companies)} companies')
@@ -957,14 +985,31 @@ def search_companies():
     except Exception as e:
         import traceback
         error_trace = traceback.format_exc()
-        print(f"Error in search_companies: {str(e)}")
-        print(f"Traceback: {error_trace}")
-        update_progress('error', 'exception', 0, f'Error: {str(e)}')
-        return jsonify({
-            'error': str(e),
-            'companies': [],
-            'count': 0
-        }), 500
+        print("=" * 50)
+        print("ERROR IN SEARCH_COMPANIES")
+        print(f"Error: {str(e)}")
+        print(f"Type: {type(e).__name__}")
+        print("Traceback:")
+        print(error_trace)
+        print("=" * 50)
+        
+        try:
+            update_progress('error', 'exception', 0, f'Error: {str(e)}')
+        except:
+            pass  # Don't fail if progress update fails
+        
+        # Always return valid JSON, even on error
+        try:
+            return jsonify({
+                'error': str(e),
+                'companies': [],
+                'count': 0,
+                'error_type': type(e).__name__
+            }), 500
+        except Exception as json_error:
+            # Last resort - return simple text response
+            print(f"CRITICAL: Could not return JSON error: {json_error}")
+            return f"Error: {str(e)}", 500, {'Content-Type': 'text/plain'}
 
 @app.route('/api/history', methods=['GET'])
 def get_history():
