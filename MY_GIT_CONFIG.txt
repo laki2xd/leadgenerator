@@ -1,0 +1,10 @@
+# Your Git Configuration Commands
+# Run these AFTER installing Git and restarting PowerShell
+
+git config --global user.name "laki2xd"
+git config --global user.email "ggboymc@gmail.com"
+
+# Verify configuration:
+git config --global user.name
+git config --global user.email
+

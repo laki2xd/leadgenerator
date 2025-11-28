@@ -1,0 +1,22 @@
+services:
+  - type: web
+    name: lead-generator
+    env: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn app:app
+    envVars:
+      - key: GOOGLE_PLACES_API_KEY
+        sync: false
+      - key: YELP_API_KEY
+        sync: false
+      - key: APOLLO_API_KEY
+        sync: false
+      - key: CLEARBIT_API_KEY
+        sync: false
+      - key: ZOOMINFO_API_KEY
+        sync: false
+    disk:
+      name: exports-disk
+      mountPath: /opt/render/project/src/exports
+      sizeGB: 1
+

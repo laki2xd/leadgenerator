@@ -1,0 +1,20 @@
+# Netlify Configuration
+# ⚠️ WARNING: Netlify is NOT recommended for this Flask app!
+# 
+# Limitations:
+# - Serverless functions have 10-second timeout (your searches take longer)
+# - No persistent file storage (exports won't work)
+# - No persistent state (progress tracking won't work)
+#
+# Better alternatives: Render, Railway, or Fly.io
+# See DEPLOYMENT.md for details
+
+[build]
+  command = "echo 'Netlify deployment not supported - use Render or Railway instead'"
+  publish = "."
+
+[[redirects]]
+  from = "/*"
+  to = "/.netlify/functions/server"
+  status = 200
+

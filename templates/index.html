@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Company Finder - Canada & USA</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <div class="app-wrapper">
+        <div class="container">
+            <header class="header">
+                <div class="header-content">
+                    <h1 class="logo">Huiatina</h1>
+                    <p class="subtitle">Find B2B companies needing transportation services in Canada & USA</p>
+                </div>
+            </header>
+
+            <section class="search-section">
+                <div class="search-card">
+                    <div class="search-tabs">
+                        <button class="tab-btn active" data-tab="industry">
+                            <span class="tab-icon">🏭</span>
+                            <span>Search by Industry</span>
+                        </button>
+                        <button class="tab-btn" data-tab="product">
+                            <span class="tab-icon">📦</span>
+                            <span>Search by Product</span>
+                        </button>
+                    </div>
+                    
+                    <div id="industryTab" class="tab-content active">
+                        <div class="input-group">
+                            <div class="input-header">
+                                <label for="industry">Enter Industry</label>
+                                <button id="industryHistoryBtn" class="history-btn" title="View search history">
+                                    <span class="history-icon">🕒</span>
+                                    <span class="history-text">History</span>
+                                </button>
+                            </div>
+                            <input 
+                                type="text" 
+                                id="industry" 
+                                placeholder="e.g., Manufacturing, Distribution, Warehouse, Logistics, Wholesale"
+                                autocomplete="off"
+                                class="input-field"
+                            >
+                        </div>
+                    </div>
+                    
+                    <div id="productTab" class="tab-content">
+                        <div class="input-group">
+                            <div class="input-header">
+                                <label for="product">Enter Product/Object</label>
+                                <button id="productHistoryBtn" class="history-btn" title="View search history">
+                                    <span class="history-icon">🕒</span>
+                                    <span class="history-text">History</span>
+                                </button>
+                            </div>
+                            <input 
+                                type="text" 
+                                id="product" 
+                                placeholder="e.g., Steel pipes, Automotive parts, Electronics, Furniture, Machinery"
+                                autocomplete="off"
+                                class="input-field"
+                            >
+                        </div>
+                        <div class="input-group">
+                            <label for="productIndustry">Optional: Industry Filter</label>
+                            <input 
+                                type="text" 
+                                id="productIndustry" 
+                                placeholder="e.g., Manufacturing, Industrial (leave empty for auto-detect)"
+                                autocomplete="off"
+                                class="input-field"
+                            >
+                        </div>
+                    </div>
+                    
+                    <button id="searchBtn" class="btn btn-primary">
+                        <span class="btn-text">Search Companies</span>
+                        <span class="btn-icon">→</span>
+                    </button>
+                </div>
+            </section>
+
+            <div id="loading" class="loading-state hidden">
+                <div class="loading-content">
+                    <div class="spinner-wrapper">
+                        <div class="spinner"></div>
+                    </div>
+                    <p id="progressStatus" class="progress-status">Searching for companies...</p>
+                    <div class="progress-container">
+                        <div class="progress-bar-wrapper">
+                            <div id="progressBar" class="progress-bar"></div>
+                        </div>
+                        <div class="progress-info">
+                            <span>Companies found: <strong id="progressCount">0</strong></span>
+                        </div>
+                    </div>
+                    <div id="progressBox" class="progress-box">
+                        <div class="progress-header">Search Progress</div>
+                        <div id="progressDetails" class="progress-details"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Search History Modal -->
+            <div id="historyModal" class="history-modal hidden">
+                <div class="history-modal-content">
+                    <div class="history-modal-header">
+                        <h3 class="history-modal-title">Search History</h3>
+                        <button id="closeHistoryModal" class="history-close-btn" aria-label="Close">×</button>
+                    </div>
+                    <div class="history-modal-body">
+                        <div id="historyList" class="history-list">
+                            <div class="history-empty">No search history yet</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div id="error" class="alert alert-error hidden"></div>
+
+            <div id="results" class="results-section hidden">
+                <div class="results-header">
+                    <div class="results-title">
+                        <h2>Found <span id="count" class="count-highlight">0</span> Companies</h2>
+                        <p class="results-subtitle">Review and export your lead list</p>
+                    </div>
+                    <button id="exportBtn" class="btn btn-success">
+                        <span class="btn-icon">📥</span>
+                        <span class="btn-text">Export to Excel</span>
+                    </button>
+                </div>
+                <div id="companiesList" class="companies-list"></div>
+            </div>
+
+            <section class="info-section">
+                <div class="info-card">
+                    <h3 class="info-title">How it works</h3>
+                    <ul class="info-list">
+                        <li>
+                            <strong>Search by Industry:</strong> Enter an industry name (e.g., "Manufacturing", "Distribution", "Warehouse", "Logistics")
+                        </li>
+                        <li>
+                            <strong>Search by Product:</strong> Enter a product/object name (e.g., "Steel pipes", "Automotive parts") to find manufacturers
+                        </li>
+                        <li>Click "Search Companies" to find B2B companies that need transportation services</li>
+                        <li><strong>Automatically filters out:</strong> Retail stores, restaurants, cafes, small shops</li>
+                        <li><strong>Focuses on:</strong> Manufacturing, warehouses, distribution centers, logistics companies</li>
+                        <li>View contact information including phone numbers and email addresses (when available)</li>
+                        <li>Export results to Excel for lead generation and sales prospecting</li>
+                    </ul>
+                </div>
+                
+                <div class="api-info-card">
+                    <h4 class="api-title">Setup Required</h4>
+                    <p class="api-description">To use this application, you need to set up API keys:</p>
+                    <ol class="api-list">
+                        <li>
+                            <strong>Google Places API:</strong> Get your key from 
+                            <a href="https://console.cloud.google.com/google/maps-apis" target="_blank" class="link">Google Cloud Console</a>
+                        </li>
+                        <li>
+                            <strong>Yelp API (Optional):</strong> Get your key from 
+                            <a href="https://www.yelp.com/developers" target="_blank" class="link">Yelp Developers</a>
+                        </li>
+                        <li>Set environment variables: <code class="code">GOOGLE_PLACES_API_KEY</code> and <code class="code">YELP_API_KEY</code></li>
+                    </ol>
+                </div>
+            </section>
+        </div>
+    </div>
+
+    <script src="{{ url_for('static', filename='script.js') }}"></script>
+</body>
+</html>
+
